@@ -82,10 +82,6 @@ class PyTorchDAGTestCase(DAGTestCase):
         # using PyG library
         pass
 
-if __name__ == '__main__':
-    print("hello")
-    unittest.main()
-
 
 def get_dag_test_case(dag_class):
     class MyDAGTestCase(DAGTestCase):
@@ -96,3 +92,8 @@ def get_dag_test_case(dag_class):
 @pytest.mark.parametrize("dag_class", [AdjacencyListDAG])
 def test_dag(dag_class):
     dag_test_case = get_dag_test_case(dag_class)
+
+if __name__ == '__main__':
+    print("hello")
+    unittest.main()
+

@@ -9,7 +9,8 @@ import openai
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from dotenv import load_dotenv
-from task_storage import QueueTaskStorage, DAGTaskStorage
+from task_storage import QueueTaskStorage, QueueDAGTaskStorage
+from graph import AdjacencyListDAG
 
 # Load default environment variables (.env)
 load_dotenv()
@@ -220,7 +221,8 @@ if PINECONE_API_KEY:
 
 
 # Initialize tasks storage
-tasks_storage = QueueTaskStorage()
+# tasks_storage = QueueTaskStorage()
+tasks_storage = QueueDAGTaskStorage(AdjacencyListDAG)
 if COOPERATIVE_MODE in ['l', 'local']:
     if can_import("extensions.ray_tasks"):
         import sys

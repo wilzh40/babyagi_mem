@@ -19,7 +19,7 @@ class DAG(ABC):
         pass
 
     @abstractmethod
-    def add_node(self, node):
+    def add_node(self, node: Hashable):
         pass
     
     @abstractmethod
