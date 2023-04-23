@@ -9,6 +9,7 @@ import openai
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from dotenv import load_dotenv
+from task_storage import QueueTaskStorage, DAGTaskStorage
 
 # Load default environment variables (.env)
 load_dotenv()
@@ -217,34 +218,9 @@ if PINECONE_API_KEY:
         results_storage = PineconeResultsStorage(OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_ENVIRONMENT, LLM_MODEL, LLAMA_MODEL_PATH, RESULTS_STORE_NAME, OBJECTIVE)
         print("\nReplacing results storage: " + "\033[93m\033[1m" +  "Pinecone" + "\033[0m\033[0m")
 
-# Task storage supporting only a single instance of BabyAGI
-class SingleTaskListStorage:
-    def __init__(self):
-        self.tasks = deque([])
-        self.task_id_counter = 0
-
-    def append(self, task: Dict):
-        self.tasks.append(task)
-
-    def replace(self, tasks: List[Dict]):
-        self.tasks = deque(tasks)
-
-    def popleft(self):
-        return self.tasks.popleft()
-
-    def is_empty(self):
-        return False if self.tasks else True
-
-    def next_task_id(self):
-        self.task_id_counter += 1
-        return self.task_id_counter
-
-    def get_task_names(self):
-        return [t["task_name"] for t in self.tasks]
-
 
 # Initialize tasks storage
-tasks_storage = SingleTaskListStorage()
+tasks_storage = QueueTaskStorage()
 if COOPERATIVE_MODE in ['l', 'local']:
     if can_import("extensions.ray_tasks"):
         import sys
