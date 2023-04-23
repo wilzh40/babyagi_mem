@@ -2,7 +2,7 @@
 import unittest
 import pytest
 from typing import List
-from graph import DAG, AdjacencyListDAG
+from graph import DAG, AdjacencyListDAG, NxDAG
 from abc import ABC, abstractmethod
 
 class DAGTestCase(ABC):
@@ -89,7 +89,7 @@ def get_dag_test_case(dag_class):
             return dag_class()
     return MyDAGTestCase
 
-@pytest.mark.parametrize("dag_class", [AdjacencyListDAG])
+@pytest.mark.parametrize("dag_class", [AdjacencyListDAG, NxDAG])
 def test_dag(dag_class):
     dag_test_case = get_dag_test_case(dag_class)
 

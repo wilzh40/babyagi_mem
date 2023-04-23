@@ -1,9 +1,9 @@
 import unittest
-from typing import List, Set, Hashable
 import torch
+import networkx as nx
+
+from typing import List, Set, Hashable
 from torch_geometric.data import Data
-
-
 from abc import ABC, abstractmethod
 
 
@@ -23,7 +23,7 @@ class DAG(ABC):
         pass
     
     @abstractmethod
-    def add_edge(self, node_from, node_to):
+    def add_edge(self, node_from: Hashable, node_to: Hashable):
         pass
     
     @abstractmethod
@@ -133,3 +133,37 @@ class AdjacencyListDAG(DAG):
     def topological_sort(self):
         return super().topological_sort()
 
+
+class NxDAG(DAG):
+    def __init__(self):
+        self.graph = nx.DiGraph()
+
+    def edges(self):
+        return list(self.graph.edges())
+
+    def add_node(self, node: Hashable):
+        self.graph.add_node(node)
+
+    def add_edge(self, node_from: Hashable, node_to: Hashable):
+        self.graph.add_edge(node_from, node_to)
+
+    def remove_node(self, node):
+        self.graph.remove_node(node)
+
+    def remove_edge(self, node_from, node_to):
+        self.graph.remove_edge(node_from, node_to)
+
+    def get_roots(self):
+        return [node for node in self.graph.nodes() if self.graph.in_degree(node) == 0]
+
+    def get_leaves(self):
+        return [node for node in self.graph.nodes() if self.graph.out_degree(node) == 0]
+
+    def get_successors(self, node):
+        return self.graph.successors(node)
+
+    def get_predecessors(self, node):
+        return self.graph.predecessors(node)
+
+    def topological_sort(self) -> List:
+        return list(nx.topological_sort(self.graph))
