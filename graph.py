@@ -53,15 +53,15 @@ class DAG(ABC):
     def topological_sort(self) -> List :
         visited = set()
         order = []
-        stack = list(self.get_roots())
+        stack = list(self.get_leaves())
         while len(stack) > 0:
             n = stack.pop()
             if n in visited:
                 continue
-            stack = stack + list(self.get_successors(n))
+            stack = stack + list(self.get_predecessors(n))
             visited.add(n)
             order.append(n)
-        return order
+        return order[::-1]
         
 
 class PytorchDag(DAG):

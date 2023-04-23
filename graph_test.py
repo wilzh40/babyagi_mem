@@ -17,6 +17,7 @@ class DAGTestCase(ABC):
             https://stackoverflow.com/questions/54174116/checking-validity-of-topological-sort
         """
         node_to_index = {n: idx for idx, n in enumerate(node_order)}
+        print(node_order)
         for u, v in self.dag.edges():
             # For each edge, retrieve the index of each of its vertices in the ordering.
             ux = node_to_index[u]
@@ -62,10 +63,10 @@ class DAGTestCase(ABC):
         # test topological sorting of the DAG
         self.dag.add_edge('A', 'B')
         self.dag.add_edge('B', 'C')
-        # self.assertEqual(self.dag.topological_sort(), ['A', 'B', 'C'])
-        order = self.dag.topological_sort()
-        print(order)
-        self.assertTrue(self.is_topological_order_edge_approch(order))
+        self.assertTrue(self.is_topological_order_edge_approch(self.dag.topological_sort()))
+        self.dag.add_edge('D', 'B')
+        self.assertEqual(self.dag.nodes, {'A', 'B', 'C', 'D'})
+        self.assertTrue(self.is_topological_order_edge_approch(self.dag.topological_sort()))
         
 
 class AdjListDAGTestCase(DAGTestCase, unittest.TestCase):
