@@ -2,6 +2,7 @@
 import os
 import time
 import logging
+import sys
 from collections import deque
 from typing import Dict, List
 import importlib
@@ -53,7 +54,7 @@ class StreamlitHandler(logging.Handler):
         log_output.code(msg)
 
 # create a stream handler with the colored formatter
-handler = StreamlitHandler()
+# handler = StreamlitHandler()
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 # add the handler to the logger
@@ -371,7 +372,7 @@ def find_function_contents(function_name):
             return contents
     
 def dag_modification_agent(
-    objective: str, result: Dict, task_description: str, task_list: List[Task]):
+    objective: str, result: Dict, task_description: str, task_list: List[Task], task_limit=10):
     task_list_str = '\n'.join([str(task) for task in task_list])
     prompt = f"""
     You are a task creation AI that uses the result of an execution agent to create new tasks with the following objective: {objective},
@@ -379,6 +380,7 @@ def dag_modification_agent(
     This result was based on this task description: {task_description}. These are incomplete tasks: {task_list_str}.
     Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks in the same format as our tasks, 
     as well as a list of dependencies between tasks in the following format for the purpose of ingestion into networkx Directed Acyclic Graph, where the id is the index of the above returned tasks
+    We want to have around at most {task_limit} tasks in the graph.
     Make sure we can parse the tasks by using the following class definition:
     ```
     {Task.get_class_def()}
@@ -514,13 +516,38 @@ if not JOIN_EXISTING_OBJECTIVE:
     tasks_storage.append(initial_task)
 
 
+# Add custom CSS to adjust padding and margins
+# st.markdown("""
+#     <style>
+#         /* Adjust padding and margins of Streamlit components */
+#         .stButton, .stTextInput > div > div, .stSelectbox > div > div:first-child, .css-2trqyj:focus, .stTextArea > div > div {
+#             padding: 2px 4px;
+#             margin: 0px 4px;
+#         }
+#         .stTextInput > div {
+#             margin-top: 0px;
+#             margin-bottom: 0px;
+#         }
+#         .stNumberInput > div > div, .stSelectbox > div > div:first-child {
+#             margin-right: 4px;
+#         }
+#     </style>
+# """, unsafe_allow_html=True)
+# col1, col2 = st.columns([2, 1])
+tab1, tab2, tab3, tab4 = st.tabs(["Tasks/Results", "Graph", "List", "Log"])
+graph_placeholder = tab2.empty()
+current_task_placeholder = tab1.empty()
+current_result_placeholder = tab1.empty()
+current_list_placeholder = tab3.empty()
+
 # main iteration loop.
 def lets_go(objective: str, initial_task: str):
-    initial_tasks = dag_creation_agent(OBJECTIVE, INITIAL_TASK)
+    initial_tasks = dag_creation_agent(object, initial_task)
     nx_task_storage = NxTaskStorage(OBJECTIVE)
     nx_task_storage.from_tasks(initial_tasks, objective=OBJECTIVE)
     iter = 0
-    while True:
+    st.session_state.loop_running = True
+    while st.session_state.loop_running:
         # As long as there are tasks in the storage...
         if not nx_task_storage.is_empty():
             iter += 1
@@ -531,7 +558,7 @@ def lets_go(objective: str, initial_task: str):
             # Save the visualization
             nx_task_storage.save_viz("./viz/{}.png".format(iter))
             # Visualize in streamlit.
-            nx_task_storage.st_viz()
+            # nx_task_storage.st_viz()
 
             # Step 1: Pull the first incomplete task
             task = nx_task_storage.popleft()
@@ -539,7 +566,9 @@ def lets_go(objective: str, initial_task: str):
             print(task.task_name)
 
             # Send to execution function to complete the task based on the context
-            result = execution_agent(OBJECTIVE, task.task_name)
+            # TODO: Have a more advanced execution agent + save results.
+            # TODO: Handle multiple results on the depdenceny tree.
+            result = execution_agent(objective, task.task_name)
             print("\033[93m\033[1m" + "\n*****TASK RESULT*****\n" + "\033[0m\033[0m")
             print(result)
 
@@ -556,6 +585,19 @@ def lets_go(objective: str, initial_task: str):
 
             results_storage.add(task, result, result_id, vector)
 
+            # Visualize this round of tasks before modification.
+            with current_task_placeholder.container():
+                st.subheader("Current Task: {}".format(task.task_name))
+            with current_result_placeholder.container():
+                st.subheader("Task Result")
+                st.markdown(result, unsafe_allow_html=True)
+            with current_list_placeholder.container():
+                st.subheader("List of Tasks")
+                st.markdown("\n\n".join(nx_task_storage.get_task_names()), unsafe_allow_html=True)
+            with graph_placeholder.container():
+                st.subheader("DAG")
+                nx_task_storage.st_viz()
+
             # Step 3: Create new tasks and reprioritize task list
             # only the main instance in cooperative mode does that
             # new_tasks = task_creation_agent(
@@ -565,7 +607,7 @@ def lets_go(objective: str, initial_task: str):
             #     tasks_storage.get_task_names(),
             # )
             new_tasks = dag_modification_agent(
-                OBJECTIVE,
+                objective,
                 enriched_result,
                 task.task_name,
                 nx_task_storage.get_tasks()
@@ -591,25 +633,46 @@ def lets_go(objective: str, initial_task: str):
 
 # nx_task_storage = NxTaskStorage(OBJECTIVE)
 # nx_task_storage.append(Task(INITIAL_TASK, []))
-def main():
-    # Streamlit settings.
-    st.sidebar.title("FlowGPT")
-    objective = st.sidebar.text_area(
-        "Objective",
-        value=st.session_state.get("objective-input", OBJECTIVE),
-        key="objective-input",
-        height=50
-    )
-    initial_task = st.sidebar.text_area(
-        "Initial task",
-        value=st.session_state.get("init-input", INITIAL_TASK),
-        key="init-input",
-        height=50
-    )
-    submit = st.sidebar.button("Start")
-    valid_submission = submit and objective != "" and initial_task != ""
+# Streamlit settings.
+if 'loop_running' not in st.session_state:
+    st.session_state.loop_running = False
+# st.markdown("""
+#     <style>
+#             .block-container {
+#                 padding-top: 1rem;
+#                 padding-bottom: 0rem;
+#                 padding-left: 5rem;
+#                 padding-right: 5rem;
+#             }
+#     </style>
+#     """, unsafe_allow_html=True)
 
-    lets_go(objective=objective, initial_task=initial_task)
+
+def main():
+    with st.sidebar:
+        st.title("DAGGPT")
+        objective = st.text_area(
+            "Objective",
+            value=st.session_state.get("objective-input", OBJECTIVE),
+            key="objective-input",
+            height=30
+        )
+        initial_task = st.text_area(
+            "Initial task",
+            value=st.session_state.get("init-input", INITIAL_TASK),
+            key="init-input",
+            height=30
+        )
+
+        submit = st.button("Start")
+        valid_submission = submit and objective != "" and initial_task != ""
+        st.session_state
+    if (valid_submission) and not st.session_state.loop_running:
+        with st.spinner(text="Looping..."):
+            st.cache_data.clear()
+            lets_go(objective=objective, initial_task=initial_task)
+            st.experimental_rerun()
+
 
 if __name__ == "__main__":
     main()
