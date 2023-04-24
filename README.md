@@ -2,6 +2,21 @@
 
 - Install `pytest` and `ptw` through `pip`
 - Run `ptw`
+- `pip3 install pip install git+https://github.com/alaeddine-13/thinkgpt.git` for THihinkGpt
+
+
+- TO RUN UI: `streamlit run babyagi.py`
+- TO RUN: `watchexec -r -e py python3 babyagi.py`
+- TO RUN UNIT TESTS: `ptw`, `python3 -m unittest task.py`
+
+# TODO
+
+- Get things running on docker.
+- Clean up all the extraneous code.
+- Get a better memory-based system using LangChatGPT
+- Have a better execution system in a priviledged environment (research and execution)
+- Explore self-forking
+
 
 # Objective
 

@@ -15,6 +15,7 @@ from graph import NxDAG
 import regex as re
 from task import Task
 import streamlit as st
+import thinkgpt
 
 
 # Load logger
