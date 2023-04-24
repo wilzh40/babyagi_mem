@@ -18,3 +18,5 @@ llama/
 chroma/
 node_modules/
 .DS_Store
+
+mindmap.py

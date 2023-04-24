@@ -9,8 +9,9 @@ import openai
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from dotenv import load_dotenv
-from task_storage import QueueTaskStorage, QueueDAGTaskStorage
-from graph import AdjacencyListDAG
+from task_storage import QueueTaskStorage, QueueDAGTaskStorage, NxTaskStorage, Task
+from graph import AdjacencyListDAG, NxDAG 
+import regex as re
 
 # Load default environment variables (.env)
 load_dotenv()
@@ -185,14 +186,14 @@ class DefaultResultsStorage:
                 ids=result_id,
                 embeddings=embeddings,
                 documents=vector,
-                metadatas={"task": task["task_name"], "result": result},
+                metadatas={"task": task.task_name, "result": result},
             )
         else:
             self.collection.add(
                 ids=result_id,
                 embeddings=embeddings,
                 documents=vector,
-                metadatas={"task": task["task_name"], "result": result},
+                metadatas={"task": task.task_name, "result": result},
             )
 
     def query(self, query: str, top_results_num: int) -> List[dict]:
@@ -222,18 +223,7 @@ if PINECONE_API_KEY:
 
 # Initialize tasks storage
 # tasks_storage = QueueTaskStorage()
-tasks_storage = QueueDAGTaskStorage(AdjacencyListDAG)
-if COOPERATIVE_MODE in ['l', 'local']:
-    if can_import("extensions.ray_tasks"):
-        import sys
-        from pathlib import Path
-        sys.path.append(str(Path(__file__).resolve().parent))
-        from extensions.ray_tasks import CooperativeTaskListStorage
-        tasks_storage = CooperativeTaskListStorage(OBJECTIVE)
-        print("\nReplacing tasks storage: " + "\033[93m\033[1m" +  "Ray" + "\033[0m\033[0m")
-elif COOPERATIVE_MODE in ['d', 'distributed']:
-    pass
-
+tasks_storage = QueueDAGTaskStorage(NxDAG)
 
 def openai_call(
     prompt: str,
@@ -320,6 +310,98 @@ def task_creation_agent(
     return [{"task_name": task_name} for task_name in new_tasks]
 
 
+
+
+import re
+def find_function_contents(function_name):
+    with open(__file__) as f:
+        source_code = f.read()
+        pattern = r"def {}\(.*?\):(.+?)^\s*$".format(function_name)
+        match = re.search(pattern, source_code, re.DOTALL | re.MULTILINE)
+        if match:
+            contents = match.group(1).strip()
+            return contents
+    
+def parse_response(response: str):
+    tasks = []
+    pattern = r'(?P<id>\d+)\.\s+(?P<task_name>.*?)\s+\(difficulty:\s+(?P<difficulty>[\d\.]+),\s+dependencies:\s+(?P<dependencies>\[.*?\]|none)\)'
+    for match in re.finditer(pattern, response):
+        task_id = int(match.group('id'))
+        task_name = match.group('task_name')
+        difficulty = float(match.group('difficulty'))
+        dependencies = match.group('dependencies')
+        if dependencies != "none":
+            dependencies = [int(dep_id) for dep_id in re.findall(r'\d+', dependencies)]
+        else:
+            dependencies = []
+        task = Task(task_name, {}, difficulty=difficulty, dependencies=dependencies, id=task_id)
+        tasks.append(task)
+    return tasks
+
+def dag_modification_agent(
+    objective: str, result: Dict, task_description: str, task_list: List[Task]):
+    prompt = f"""
+    You are a task creation AI that uses the result of an execution agent to create new tasks with the following objective: {objective},
+    The last completed task has the result: {result}.
+    This result was based on this task description: {task_description}. These are incomplete tasks: {', '.join([str(t) for t in task_list])}.
+    Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks in the same format as our tasks.
+    ```
+    (task_name: str, difficulty: float from 0.0 to 1.0, dependencies)
+    ```
+    Code to parse the response: 
+    ```
+    {find_function_contents("parse_response")}
+    ```
+    """
+    response = openai_call(prompt)
+    print(prompt)
+    print("Response:", response)
+    print( "Parsed response for modifications:", parse_response(response))
+
+
+def dag_creation_agent(
+    objective: str,  initial_task: str
+) -> List[Task]:
+    prompt = f"""
+    You are a task creation AI that uses the result of an execution agent to create new tasks with the following objective: {objective},
+    The first task is: {initial_task}.
+    Return 2-8 tasks as an array with the following schema: 
+    As well as a list of dependencies between tasks in the following format for the purpose of ingestion into networkx Directed Acyclic Graph, where the id is the index of the above returned tasks
+    ```
+    (task_name: str, difficulty: float from 0.0 to 1.0, dependencies)
+    ```
+    Code to parse the response: 
+    ```
+    {find_function_contents("parse_response")}
+    ```
+    Example: 
+    ("research the history of example subject", difficulty: 0.2, dependencies: [])
+    ("implement the code", difficulty: 0.8, dependencies: [0])
+    """
+    response = openai_call(prompt)
+    print(prompt)
+    print("Response:", response)
+    print( "Parsed response:", parse_response(response))
+    return parse_response(response)
+
+
+def task_creation_agent_dag(
+    objective: str, result: Dict, task_description: str, task_list: List[str], task_dependencies: Dict[str, List[str]], tasks):
+    prompt = f"""
+    You are a task creation AI that uses the result of an execution agent to create new tasks with the following objective: {objective},
+    The last completed task has the result: {result}.
+    This result was based on this task description: {task_description}. These are incomplete tasks: {', '.join(task_list)}.
+    These are the dependencies between tasks: {task_dependencies}.
+    These are the full metadata for our tasks: {tasks}.
+    Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks in the same format as our tasks.
+    """
+    response = openai_call(prompt)
+    print(prompt)
+    print(response)
+    # new_tasks = response.split("\n") if "\n" in response else [response]
+    # return [{"task_name": task_name} for task_name in new_tasks]
+
+
 def prioritization_agent():
     task_names = tasks_storage.get_task_names()
     next_task_id = tasks_storage.next_task_id()
@@ -392,22 +474,31 @@ if not JOIN_EXISTING_OBJECTIVE:
     }
     tasks_storage.append(initial_task)
 
+# nx_task_storage = NxTaskStorage(OBJECTIVE)
+# nx_task_storage.append(Task(INITIAL_TASK, []))
 def main ():
+    initial_tasks = dag_creation_agent(OBJECTIVE, INITIAL_TASK)
+    nx_task_storage = NxTaskStorage(OBJECTIVE)
+    nx_task_storage.from_tasks(initial_tasks, objective=OBJECTIVE)
+    iter = 0
     while True:
         # As long as there are tasks in the storage...
-        if not tasks_storage.is_empty():
+        if not nx_task_storage.is_empty():
+            iter += 1
             # Print the task list
             print("\033[95m\033[1m" + "\n*****TASK LIST*****\n" + "\033[0m\033[0m")
-            for t in tasks_storage.get_task_names():
+            for t in nx_task_storage.get_task_names():
                 print(" • "+t)
+            # Save the visualization
+            nx_task_storage.save_viz("""./viz/{iter}.png""")
 
             # Step 1: Pull the first incomplete task
-            task = tasks_storage.popleft()
+            task = nx_task_storage.popleft()
             print("\033[92m\033[1m" + "\n*****NEXT TASK*****\n" + "\033[0m\033[0m")
-            print(task['task_name'])
+            print(task.task_name)
 
             # Send to execution function to complete the task based on the context
-            result = execution_agent(OBJECTIVE, task["task_name"])
+            result = execution_agent(OBJECTIVE, task.task_name)
             print("\033[93m\033[1m" + "\n*****TASK RESULT*****\n" + "\033[0m\033[0m")
             print(result)
 
@@ -420,27 +511,33 @@ def main ():
             # since we don't do enrichment currently
             vector = enriched_result["data"]  
 
-            result_id = f"result_{task['task_id']}"
+            result_id = f"result_{task.id}"
 
             results_storage.add(task, result, result_id, vector)
 
             # Step 3: Create new tasks and reprioritize task list
             # only the main instance in cooperative mode does that
-            new_tasks = task_creation_agent(
+            # new_tasks = task_creation_agent(
+            #     OBJECTIVE,
+            #     enriched_result,
+            #     task["task_name"],
+            #     tasks_storage.get_task_names(),
+            # )
+            dag_test = dag_modification_agent(
                 OBJECTIVE,
                 enriched_result,
-                task["task_name"],
-                tasks_storage.get_task_names(),
+                task.task_name,
+                nx_task_storage.get_tasks()
             )
 
-            for new_task in new_tasks:
-                new_task.update({"task_id": tasks_storage.next_task_id()})
-                tasks_storage.append(new_task)
+            # for new_task in new_tasks:
+            #     new_task.update({"task_id": tasks_storage.next_task_id()})
+            #     tasks_storage.append(new_task)
 
-            if not JOIN_EXISTING_OBJECTIVE: prioritization_agent()
+            # if not JOIN_EXISTING_OBJECTIVE: prioritization_agent()
 
         # Sleep a bit before checking the task list again
-        time.sleep(5) 
+        time.sleep(3) 
 
 if __name__ == "__main__":
     main()

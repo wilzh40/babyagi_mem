@@ -50,6 +50,10 @@ class DAG(ABC):
     def get_predecessors(self, node):
         pass
 
+    @abstractmethod
+    def print(self, mapping=None):
+        pass
+
     def topological_sort(self) -> List :
         visited = set()
         order = []
@@ -133,10 +137,17 @@ class AdjacencyListDAG(DAG):
     def topological_sort(self):
         return super().topological_sort()
 
+    def print(self, mapping=None):
+        #TODO: Implement
+        return ""
+
 
 class NxDAG(DAG):
     def __init__(self):
         self.graph = nx.DiGraph()
+
+    def get_nodes(self):
+        return list(self.graph.nodes())
 
     def edges(self):
         return list(self.graph.edges())
@@ -167,3 +178,15 @@ class NxDAG(DAG):
 
     def topological_sort(self) -> List:
         return list(nx.topological_sort(self.graph))
+
+    def print(self, mapping=None):
+        # print(mapping)
+        relabeled_graph = nx.relabel_nodes(self.graph, mapping)
+        print(relabeled_graph)
+        agraph = nx.drawing.nx_agraph.to_agraph(relabeled_graph)
+        agraph.draw('./viz/current_task.png', prog='dot')
+        # nx.draw(relabeled_graph, with_labels=True)
+        # plt.show()
+        # return nx.utils.nx_ascii(relabeled_graph)
+        return nx.drawing.nx_agraph.to_agraph(relabeled_graph).string()
+
