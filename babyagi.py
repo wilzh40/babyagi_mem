@@ -13,6 +13,7 @@ from task_storage import QueueTaskStorage, QueueDAGTaskStorage, NxTaskStorage, T
 from graph import AdjacencyListDAG, NxDAG 
 import regex as re
 from task import Task
+import streamlit as st
 
 
 # Load logger
@@ -24,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 # set the logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
 logger.setLevel(logging.DEBUG)
+
+# Create sidebar to display logs
+log_output = st.sidebar.container()
 
 formatter = colorlog.ColoredFormatter(
 	"%(log_color)s%(levelname)-8s%(reset)s %(blue)s%(message)s",
@@ -40,7 +44,16 @@ formatter = colorlog.ColoredFormatter(
 	style='%'
 )
 
+class StreamlitHandler(logging.Handler):
+    def __init__(self, level=logging.NOTSET):
+        super().__init__(level)
+
+    def emit(self, record):
+        msg = self.format(record)
+        log_output.code(msg)
+
 # create a stream handler with the colored formatter
+handler = StreamlitHandler()
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 # add the handler to the logger
@@ -517,6 +530,8 @@ def lets_go(objective: str, initial_task: str):
                 print(" • "+t)
             # Save the visualization
             nx_task_storage.save_viz("./viz/{}.png".format(iter))
+            # Visualize in streamlit.
+            nx_task_storage.st_viz()
 
             # Step 1: Pull the first incomplete task
             task = nx_task_storage.popleft()
@@ -576,7 +591,6 @@ def lets_go(objective: str, initial_task: str):
 
 # nx_task_storage = NxTaskStorage(OBJECTIVE)
 # nx_task_storage.append(Task(INITIAL_TASK, []))
-import streamlit as st
 def main():
     # Streamlit settings.
     st.sidebar.title("FlowGPT")
@@ -584,13 +598,13 @@ def main():
         "Objective",
         value=st.session_state.get("objective-input", OBJECTIVE),
         key="objective-input",
-        height=200
+        height=50
     )
     initial_task = st.sidebar.text_area(
         "Initial task",
         value=st.session_state.get("init-input", INITIAL_TASK),
         key="init-input",
-        height=200
+        height=50
     )
     submit = st.sidebar.button("Start")
     valid_submission = submit and objective != "" and initial_task != ""

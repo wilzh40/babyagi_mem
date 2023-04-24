@@ -93,6 +93,7 @@ class AdjacencyListDAG(DAG):
         self.add_node(node1)
         self.add_node(node2)
         self.adj_list[node1].add(node2)
+
     
 
     def remove_node(self, node):

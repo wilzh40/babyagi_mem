@@ -7,6 +7,10 @@ from graph import DAG, AdjacencyListDAG, NxDAG
 from datetime import datetime
 import networkx as nx
 import inspect
+import streamlit as st
+from streamlit_agraph import agraph, Node, Edge, Config
+from task import Task
+
 T = TypeVar('T', bound=DAG)
 
 class TaskStorage(ABC):
@@ -108,44 +112,6 @@ def find_class_contents(class_name):
             return match.group(2).strip()
         
 
-class Task:
-    def __init__(self, task_name, task_params, dependencies=[], status="pending", result=None, priority=0, difficulty=0, creation_timestamp=None, id=None):
-        self.task_name = task_name
-        self.task_params = task_params
-        self.status = "pending"
-        self.result = None
-        self.priority = 0
-        self.difficulty = 0
-        self.dependencies = dependencies
-        self.id = id
-        self.creation_timestamp = datetime.now()
-    def __str__(self) -> str:
-        dep_str = ','.join(str(dep) for dep in self.dependencies) if len(self.dependencies) > 0 else "[]"
-        return f"{self.id}: {self.task_name} (difficulty: {self.difficulty}, dependencies: {dep_str})"
-    def __repr__(self):
-        return f"Task(task_name={self.task_name}, task_params={self.task_params}, status={self.status}, result={self.result}, priority={self.priority}, creation_timestamp={self.creation_timestamp}, id={self.id})"
-
-    @classmethod
-    def from_model_resp(cls, string):
-        tasks = []
-        pattern = r'(?P<id>\d+)\.\s+(?P<task_name>.*?)\s+\(difficulty:\s+(?P<difficulty>[\d\.]+),\s+dependencies:\s+(?P<dependencies>\[.*?\]|none)\)'
-        for match in re.finditer(pattern, string):
-            task_id = int(match.group('id'))
-            task_name = match.group('task_name')
-            difficulty = float(match.group('difficulty'))
-            dependencies = match.group('dependencies')
-            if dependencies != "none":
-                dependencies = [int(dep_id) for dep_id in re.findall(r'\d+', dependencies)]
-            else:
-                dependencies = []
-            task = cls(task_name, {}, difficulty=difficulty, dependencies=dependencies, id=task_id)
-            tasks.append(task)
-        return tasks
-
-    @classmethod
-    def get_class_def(cls):
-        return inspect.getsource(Task)
-
 
 # Breaking the absraction here, still a bit rusty from Python.
 class NxTaskStorage():
@@ -155,7 +121,7 @@ class NxTaskStorage():
         self.tasks_dict = {}
         self.graph = nx.DiGraph()
         self.objective_node = objective
-        self.tasks_dict[0] = Task(objective, {})
+        self.tasks_dict[0] = Task(self.objective_node, objective,  {})
         self.graph.add_node(self.objective_node)
 
     def get_tasks(self):
@@ -165,7 +131,7 @@ class NxTaskStorage():
         self.graph = nx.DiGraph()
         self.objective_node = -1
         self.graph.add_node(self.objective_node)
-        self.tasks_dict[self.objective_node] = Task(objective, {})
+        self.tasks_dict[self.objective_node] = Task(self.objective_node, objective, {})
 
         for task in tasks:
             self.tasks_dict[task.id] = task
@@ -224,6 +190,59 @@ class NxTaskStorage():
         relabeled_graph = nx.relabel_nodes(self.graph, mapping)
         agraph = nx.drawing.nx_agraph.to_agraph(relabeled_graph)
         agraph.draw(path, prog='dot')
+
+    # def _add_expand_delete_buttons(self, node) -> None:
+    #     st.sidebar.subheader(node)
+    #     cols = st.sidebar.columns(2)
+    #     cols[1].button(
+    #         label="Delete", 
+    #         on_click=self._delete_node,
+    #         type="primary",
+    #         key=f"delete_{node}",
+    #         # pass on to _delete_node
+    #         args=(node,)
+    #     )
+    
+    def st_viz(self):
+        # mapping = {k: v.task_name for k, v in self.tasks_dict.items()}
+        # relabeled_graph = nx.relabel_nodes(self.graph, mapping)
+        # agraph = nx.drawing.nx_agraph.to_agraph(relabeled_graph)
+
+        selected = st.session_state.get("last_expanded")
+        COLOR = "cyan"
+        FOCUS_COLOR = "red"
+        vis_nodes = [
+            Node(
+                id=n, 
+                label=self.tasks_dict[n].task_name + f"({self.tasks_dict[n].difficulty})",
+                # a little bit bigger if selected
+                size=self.tasks_dict[n].difficulty*200 + 10 + 10 * (n==selected),
+                borderWidth=1,
+                # a different color if selected
+                color=COLOR if n != selected else FOCUS_COLOR
+            ) 
+            for n in self.graph.nodes]
+        vis_edges = [Edge(source=a, target=b) for a, b in self.graph.edges]
+        config = Config(width="100%",
+                        height=600,
+                        directed=True, 
+                        physics=True,
+                        hierarchical=False,
+                        )
+        # returns a node if clicked, otherwise None
+        clicked_node = agraph(nodes=vis_nodes, 
+                        edges=vis_edges, 
+                        config=config)
+
+
+        # Define the node size based on the task difficulty
+        # sizes = [task.difficulty*200 + 50 for task in self.tasks_dict.values()]
+
+        # Render the agraph visualization
+        # agraph(nodes=self.graph.nodes, edges=self.graph.edges, config=config)
+        # if clicked, update the sidebar with a button to create it
+        # if clicked_node is not None:
+        #     self._add_expand_delete_buttons(clicked_node)
 
     
 if __name__ == '__main__':

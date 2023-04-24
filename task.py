@@ -1,8 +1,9 @@
 import inspect
 import re
 import unittest
+# Main takeaways: I create the class with the help of ChatGpt barely remembering any Pythonic sytaxt.
 class Task:
-    def __init__(self, id, task_name, task_params, dependencies=[], status="pending", result=None, priority=0, difficulty=0, creation_timestamp=None):
+    def __init__(self, id, task_name, task_params={}, dependencies=[], status="pending", result=None, priority=0, difficulty=0, creation_timestamp=None):
         self.id = id
         self.task_name = task_name
         self.task_params = task_params
