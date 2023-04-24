@@ -8,9 +8,9 @@ class Task:
         self.task_name = task_name
         self.task_params = task_params
         self.status = "pending"
-        self.result = None
-        self.priority = 0
-        self.difficulty = 0
+        self.result = result
+        self.priority = priority
+        self.difficulty = difficulty
         self.dependencies = dependencies
         self.creation_timestamp = datetime.now()
         

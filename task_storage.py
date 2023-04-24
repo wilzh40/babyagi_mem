@@ -13,103 +13,103 @@ from task import Task
 
 T = TypeVar('T', bound=DAG)
 
-class TaskStorage(ABC):
-    @abstractmethod
-    def append(self, task: Dict):
-        pass
+# class TaskStorage(ABC):
+#     @abstractmethod
+#     def append(self, task: Dict):
+#         pass
 
-    @abstractmethod
-    def replace(self, tasks: List[Dict]):
-        pass
+#     @abstractmethod
+#     def replace(self, tasks: List[Dict]):
+#         pass
 
-    @abstractmethod
-    def popleft(self):
-        pass
+#     @abstractmethod
+#     def popleft(self):
+#         pass
 
-    @abstractmethod
-    def is_empty(self):
-        pass
+#     @abstractmethod
+#     def is_empty(self):
+#         pass
 
-    def next_task_id(self):
-        self.task_id_counter += 1
-        return self.task_id_counter
+#     def next_task_id(self):
+#         self.task_id_counter += 1
+#         return self.task_id_counter
 
-    @abstractmethod
-    def get_task_names(self):
-        pass
+#     @abstractmethod
+#     def get_task_names(self):
+#         pass
 
-class QueueTaskStorage(TaskStorage):
-    def __init__(self):
-        self.task_id_counter = 0
-        self.tasks = deque([])
+# class QueueTaskStorage(TaskStorage):
+#     def __init__(self):
+#         self.task_id_counter = 0
+#         self.tasks = deque([])
 
-    def append(self, task: Dict):
-        self.tasks.append(task)
+#     def append(self, task: Dict):
+#         self.tasks.append(task)
 
-    def replace(self, tasks: List[Dict]):
-        self.tasks = deque(tasks)
+#     def replace(self, tasks: List[Dict]):
+#         self.tasks = deque(tasks)
 
-    def popleft(self):
-        return self.tasks.popleft()
+#     def popleft(self):
+#         return self.tasks.popleft()
 
-    def is_empty(self):
-        return False if self.tasks else True
+#     def is_empty(self):
+#         return False if self.tasks else True
 
-    def get_task_names(self):
-        return [t["task_name"] for t in self.tasks]
+#     def get_task_names(self):
+#         return [t["task_name"] for t in self.tasks]
 
-# The DAG will store the task IDs. Aiming to have feature parity with the old QueueTaskStorage but using a DAG as the underlying data structure.
-# TODO: Somehow use the latent structure of the dag to make the task selection more efficient and prioritzie noes.
-class QueueDAGTaskStorage(TaskStorage):
-    def __init__(self, dag_class: type[DAG]):
-        super().__init__()
-        self.dag = dag_class()
-        self.task_id_counter = 0
-        self.tasks_dict = {}
+# # The DAG will store the task IDs. Aiming to have feature parity with the old QueueTaskStorage but using a DAG as the underlying data structure.
+# # TODO: Somehow use the latent structure of the dag to make the task selection more efficient and prioritzie noes.
+# class QueueDAGTaskStorage(TaskStorage):
+#     def __init__(self, dag_class: type[DAG]):
+#         super().__init__()
+#         self.dag = dag_class()
+#         self.task_id_counter = 0
+#         self.tasks_dict = {}
 
-    def append(self, task: Dict):
-        task_id = self.next_task_id()
-        task["id"] = task_id
-        task["creation_timestamp"] = datetime.now()
-        self.tasks_dict[task_id] = task
-        # Choose a random leaf and add the task as a successor.
-        leaves = list(self.dag.get_leaves())
-        if len(leaves) > 0:
-            self.dag.add_edge(leaves[0], task_id)
-        else:
-            self.dag.add_node(task_id)
+#     def append(self, task: Dict):
+#         task_id = self.next_task_id()
+#         task["id"] = task_id
+#         task["creation_timestamp"] = datetime.now()
+#         self.tasks_dict[task_id] = task
+#         # Choose a random leaf and add the task as a successor.
+#         leaves = list(self.dag.get_leaves())
+#         if len(leaves) > 0:
+#             self.dag.add_edge(leaves[0], task_id)
+#         else:
+#             self.dag.add_node(task_id)
     
-    def replace(self, tasks: DAG):
-        self.tasks = tasks
+#     def replace(self, tasks: DAG):
+#         self.tasks = tasks
 
-    def popleft(self):
-        order = self.dag.topological_sort()
-        node = order[0]
-        self.dag.remove_node(node)
-        return self.tasks_dict[node]
+#     def popleft(self):
+#         order = self.dag.topological_sort()
+#         node = order[0]
+#         self.dag.remove_node(node)
+#         return self.tasks_dict[node]
 
-    def is_empty(self):
-        return False if self.dag.get_nodes() else True
+#     def is_empty(self):
+#         return False if self.dag.get_nodes() else True
 
-    def get_task_names(self):
-        return [self.tasks_dict[i]["task_name"] for i in self.dag.get_nodes()]
+#     def get_task_names(self):
+#         return [self.tasks_dict[i]["task_name"] for i in self.dag.get_nodes()]
 
-    def get_task_dependencies(self):
-        return {i : self.dag.get_predecessors(i) for i in self.dag.get_nodes()}
+#     def get_task_dependencies(self):
+#         return {i : self.dag.get_predecessors(i) for i in self.dag.get_nodes()}
 
-    def save_viz(self):
-        mapping = {k: v["task_name"] for k, v in self.tasks_dict.items()}
-        self.dag.print(mapping=mapping)
+#     def save_viz(self):
+#         mapping = {k: v["task_name"] for k, v in self.tasks_dict.items()}
+#         self.dag.print(mapping=mapping)
 
-import re
-def find_class_contents(class_name):
-    print(__file__)
-    with open(__file__) as f:
-        source_code = f.read()
-        pattern = r"class\s+{}\s*\((.*?)\)\s*(?::\s*(.+?))?(?=class|\Z)".format(class_name)
-        match = re.search(pattern, source_code, re.DOTALL | re.MULTILINE)
-        if match:
-            return match.group(2).strip()
+# import re
+# def find_class_contents(class_name):
+#     print(__file__)
+#     with open(__file__) as f:
+#         source_code = f.read()
+#         pattern = r"class\s+{}\s*\((.*?)\)\s*(?::\s*(.+?))?(?=class|\Z)".format(class_name)
+#         match = re.search(pattern, source_code, re.DOTALL | re.MULTILINE)
+#         if match:
+#             return match.group(2).strip()
         
 
 
@@ -215,8 +215,8 @@ class NxTaskStorage():
             Node(
                 id=n, 
                 label=self.tasks_dict[n].task_name + f"({self.tasks_dict[n].difficulty})",
-                # a little bit bigger if selected
-                size=self.tasks_dict[n].difficulty*200 + 10 + 10 * (n==selected),
+                # a little bit bigger if selected, scaled by difficulty.
+                size=self.tasks_dict[n].difficulty*20 + 10 + 10 * (n==selected),
                 borderWidth=1,
                 # a different color if selected
                 color=COLOR if n != selected else FOCUS_COLOR

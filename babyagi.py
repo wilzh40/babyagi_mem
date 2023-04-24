@@ -10,8 +10,8 @@ import openai
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from dotenv import load_dotenv
-from task_storage import QueueTaskStorage, QueueDAGTaskStorage, NxTaskStorage, Task
-from graph import AdjacencyListDAG, NxDAG 
+from task_storage import  NxTaskStorage, Task
+from graph import NxDAG 
 import regex as re
 from task import Task
 import streamlit as st
@@ -271,7 +271,7 @@ if PINECONE_API_KEY:
 
 # Initialize tasks storage
 # tasks_storage = QueueTaskStorage()
-tasks_storage = QueueDAGTaskStorage(NxDAG)
+# tasks_storage = QueueDAGTaskStorage(NxDAG)
 
 def openai_call(
     prompt: str,
@@ -380,7 +380,7 @@ def dag_modification_agent(
     This result was based on this task description: {task_description}. These are incomplete tasks: {task_list_str}.
     Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks in the same format as our tasks, 
     as well as a list of dependencies between tasks in the following format for the purpose of ingestion into networkx Directed Acyclic Graph, where the id is the index of the above returned tasks
-    We want to have around at most {task_limit} tasks in the graph.
+    We want to have around at most {task_limit} tasks in the graph. The new graph should be a DAG: it must not contain any cycles.
     Make sure we can parse the tasks by using the following class definition:
     ```
     {Task.get_class_def()}
@@ -507,13 +507,13 @@ def context_agent(query: str, top_results_num: int):
     # print(results)
     return results
 
-# Add the initial task if starting new objective
-if not JOIN_EXISTING_OBJECTIVE:
-    initial_task = {
-        "task_id": tasks_storage.next_task_id(),
-        "task_name": INITIAL_TASK
-    }
-    tasks_storage.append(initial_task)
+# # Add the initial task if starting new objective
+# if not JOIN_EXISTING_OBJECTIVE:
+#     initial_task = {
+#         "task_id": tasks_storage.next_task_id(),
+#         "task_name": INITIAL_TASK
+#     }
+#     tasks_storage.append(initial_task)
 
 
 # Add custom CSS to adjust padding and margins
@@ -546,7 +546,6 @@ def lets_go(objective: str, initial_task: str):
     nx_task_storage = NxTaskStorage(OBJECTIVE)
     nx_task_storage.from_tasks(initial_tasks, objective=OBJECTIVE)
     iter = 0
-    st.session_state.loop_running = True
     while st.session_state.loop_running:
         # As long as there are tasks in the storage...
         if not nx_task_storage.is_empty():
@@ -594,6 +593,21 @@ def lets_go(objective: str, initial_task: str):
             with current_list_placeholder.container():
                 st.subheader("List of Tasks")
                 st.markdown("\n\n".join(nx_task_storage.get_task_names()), unsafe_allow_html=True)
+            with tab4:
+                with Message(label=f"{iter} Next Task") as m:
+                    # m.write("### Next Task")
+                    m.write("- " + str(task.id) + ": " + task.task_name)
+                    # m.write("")
+                with Message(label=f"{iter} Task Result") as m:
+                    # m.write("### Task Result")
+                    m.write(result)
+                    # m.write("")
+                with Message(label=f"{iter} Task List") as m:
+                    # m.write("### Next Task")
+                    # m.write("")
+                    m.write("\n\n".join(nx_task_storage.get_task_names()))
+                    # m.write("")
+
             with graph_placeholder.container():
                 st.subheader("DAG")
                 nx_task_storage.st_viz()
@@ -646,6 +660,25 @@ if 'loop_running' not in st.session_state:
 #             }
 #     </style>
 #     """, unsafe_allow_html=True)
+ 
+class Message:
+    exp: st.expander
+
+    def __init__(self, label: str):
+        message_area, icon_area = st.columns([10, 1])
+
+        # Expander
+        self.exp = message_area.expander(label=label, expanded=True)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, ex_type, ex_value, trace):
+        pass
+
+    def write(self, content):
+        self.exp.markdown(content)
+
 
 
 def main():
@@ -670,6 +703,7 @@ def main():
     if (valid_submission) and not st.session_state.loop_running:
         with st.spinner(text="Looping..."):
             st.cache_data.clear()
+            st.session_state.loop_running = True
             lets_go(objective=objective, initial_task=initial_task)
             st.experimental_rerun()
 
