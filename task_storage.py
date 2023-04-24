@@ -121,12 +121,12 @@ class Task:
         self.creation_timestamp = datetime.now()
     def __str__(self) -> str:
         dep_str = ','.join(str(dep) for dep in self.dependencies) if len(self.dependencies) > 0 else "[]"
-        return f"{self.id}: {self.task_name}, difficulty: {self.difficulty}, dependencies: {dep_str}"
+        return f"{self.id}: {self.task_name} (difficulty: {self.difficulty}, dependencies: {dep_str})"
     def __repr__(self):
         return f"Task(task_name={self.task_name}, task_params={self.task_params}, status={self.status}, result={self.result}, priority={self.priority}, creation_timestamp={self.creation_timestamp}, id={self.id})"
 
     @classmethod
-    def from_str(cls, string):
+    def from_model_resp(cls, string):
         tasks = []
         pattern = r'(?P<id>\d+)\.\s+(?P<task_name>.*?)\s+\(difficulty:\s+(?P<difficulty>[\d\.]+),\s+dependencies:\s+(?P<dependencies>\[.*?\]|none)\)'
         for match in re.finditer(pattern, string):
@@ -228,9 +228,7 @@ class NxTaskStorage():
     
 if __name__ == '__main__':
     print("hello")
-    print(find_class_contents("Task"))
     print(Task.get_class_def())
-
     task_storage = QueueDAGTaskStorage(NxDAG)
     task_storage.append({"task_name": "task1", "task_params": {}})
     task_storage.append({"task_name": "task2", "task_params": {}})

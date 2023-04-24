@@ -393,7 +393,7 @@ def dag_modification_agent(
     logger.debug("Response:") 
     logger.debug(response)
     logger.debug( "Parsed response for modifications:")
-    logger.debug(parse_response(response))
+    logger.debug(Task.from_model_resp(response))
 
 
 def dag_creation_agent(
@@ -420,7 +420,7 @@ def dag_creation_agent(
     logger.debug("Response:") 
     logger.debug(response)
     logger.debug( "Parsed response for modifications:")
-    logger.debug(parse_response(response))
+    logger.debug(Task.from_model_resp(response))
     return parse_response(response)
 
 
