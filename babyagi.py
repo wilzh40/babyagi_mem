@@ -13,6 +13,39 @@ from task_storage import QueueTaskStorage, QueueDAGTaskStorage, NxTaskStorage, T
 from graph import AdjacencyListDAG, NxDAG 
 import regex as re
 
+
+# Load logger
+import logging
+import colorlog
+
+# create a logger
+logger = logging.getLogger(__name__)
+
+# set the logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+logger.setLevel(logging.DEBUG)
+
+formatter = colorlog.ColoredFormatter(
+	"%(log_color)s%(levelname)-8s%(reset)s %(blue)s%(message)s",
+	datefmt=None,
+	reset=True,
+	log_colors={
+		'DEBUG':    'cyan',
+		'INFO':     'green',
+		'WARNING':  'yellow',
+		'ERROR':    'red',
+		'CRITICAL': 'red,bg_white',
+	},
+	secondary_log_colors={},
+	style='%'
+)
+
+# create a stream handler with the colored formatter
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+# add the handler to the logger
+logger.addHandler(handler)
+
+
 # Load default environment variables (.env)
 load_dotenv()
 
@@ -302,7 +335,8 @@ def task_creation_agent(
     prompt = f"""
     You are a task creation AI that uses the result of an execution agent to create new tasks with the following objective: {objective},
     The last completed task has the result: {result}.
-    This result was based on this task description: {task_description}. These are incomplete tasks: {', '.join(task_list)}.
+    This result was based on this task description: {task_description}. 
+    These are incomplete tasks: {', '.join(task_list)}.
     Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks.
     Return the tasks as an array."""
     response = openai_call(prompt)
@@ -340,23 +374,26 @@ def parse_response(response: str):
 
 def dag_modification_agent(
     objective: str, result: Dict, task_description: str, task_list: List[Task]):
+    task_list_str = '\n'.join([str(task) for task in task_list])
     prompt = f"""
     You are a task creation AI that uses the result of an execution agent to create new tasks with the following objective: {objective},
     The last completed task has the result: {result}.
-    This result was based on this task description: {task_description}. These are incomplete tasks: {', '.join([str(t) for t in task_list])}.
+    This result was based on this task description: {task_description}. These are incomplete tasks: {task_list_str}.
     Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks in the same format as our tasks.
     ```
-    (task_name: str, difficulty: float from 0.0 to 1.0, dependencies)
+    (task_name: str, difficulty: float from 0.0 to 1.0, dependencies: List[int])
     ```
-    Code to parse the response: 
+    Class definition for parsing/unparsing: 
     ```
-    {find_function_contents("parse_response")}
+    {Task.get_class_def()}
     ```
     """
     response = openai_call(prompt)
-    print(prompt)
-    print("Response:", response)
-    print( "Parsed response for modifications:", parse_response(response))
+    logger.debug(prompt)
+    logger.debug("Response:") 
+    logger.debug(response)
+    logger.debug( "Parsed response for modifications:")
+    logger.debug(parse_response(response))
 
 
 def dag_creation_agent(
@@ -368,20 +405,22 @@ def dag_creation_agent(
     Return 2-8 tasks as an array with the following schema: 
     As well as a list of dependencies between tasks in the following format for the purpose of ingestion into networkx Directed Acyclic Graph, where the id is the index of the above returned tasks
     ```
-    (task_name: str, difficulty: float from 0.0 to 1.0, dependencies)
+    (task_name: str, difficulty: float from 0.0 to 1.0, dependencies: List[int])
     ```
-    Code to parse the response: 
+    Class definition for parsing/unparsing: 
     ```
-    {find_function_contents("parse_response")}
+    {Task.get_class_def()}
     ```
     Example: 
     ("research the history of example subject", difficulty: 0.2, dependencies: [])
     ("implement the code", difficulty: 0.8, dependencies: [0])
     """
     response = openai_call(prompt)
-    print(prompt)
-    print("Response:", response)
-    print( "Parsed response:", parse_response(response))
+    logger.debug(prompt)
+    logger.debug("Response:") 
+    logger.debug(response)
+    logger.debug( "Parsed response for modifications:")
+    logger.debug(parse_response(response))
     return parse_response(response)
 
 
@@ -391,8 +430,11 @@ def task_creation_agent_dag(
     You are a task creation AI that uses the result of an execution agent to create new tasks with the following objective: {objective},
     The last completed task has the result: {result}.
     This result was based on this task description: {task_description}. These are incomplete tasks: {', '.join(task_list)}.
+
     These are the dependencies between tasks: {task_dependencies}.
+
     These are the full metadata for our tasks: {tasks}.
+
     Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks in the same format as our tasks.
     """
     response = openai_call(prompt)

@@ -6,6 +6,7 @@ from collections import deque
 from graph import DAG, AdjacencyListDAG, NxDAG
 from datetime import datetime
 import networkx as nx
+import inspect
 T = TypeVar('T', bound=DAG)
 
 class TaskStorage(ABC):
@@ -96,7 +97,16 @@ class QueueDAGTaskStorage(TaskStorage):
         mapping = {k: v["task_name"] for k, v in self.tasks_dict.items()}
         self.dag.print(mapping=mapping)
 
-
+import re
+def find_class_contents(class_name):
+    print(__file__)
+    with open(__file__) as f:
+        source_code = f.read()
+        pattern = r"class\s+{}\s*\((.*?)\)\s*(?::\s*(.+?))?(?=class|\Z)".format(class_name)
+        match = re.search(pattern, source_code, re.DOTALL | re.MULTILINE)
+        if match:
+            return match.group(2).strip()
+        
 
 class Task:
     def __init__(self, task_name, task_params, dependencies=[], status="pending", result=None, priority=0, difficulty=0, creation_timestamp=None, id=None):
@@ -110,9 +120,31 @@ class Task:
         self.id = id
         self.creation_timestamp = datetime.now()
     def __str__(self) -> str:
-        return f"Task: {self.task_name} with params {self.task_params}"
+        dep_str = ','.join(str(dep) for dep in self.dependencies) if len(self.dependencies) > 0 else "[]"
+        return f"{self.id}: {self.task_name}, difficulty: {self.difficulty}, dependencies: {dep_str}"
     def __repr__(self):
         return f"Task(task_name={self.task_name}, task_params={self.task_params}, status={self.status}, result={self.result}, priority={self.priority}, creation_timestamp={self.creation_timestamp}, id={self.id})"
+
+    @classmethod
+    def from_str(cls, string):
+        tasks = []
+        pattern = r'(?P<id>\d+)\.\s+(?P<task_name>.*?)\s+\(difficulty:\s+(?P<difficulty>[\d\.]+),\s+dependencies:\s+(?P<dependencies>\[.*?\]|none)\)'
+        for match in re.finditer(pattern, string):
+            task_id = int(match.group('id'))
+            task_name = match.group('task_name')
+            difficulty = float(match.group('difficulty'))
+            dependencies = match.group('dependencies')
+            if dependencies != "none":
+                dependencies = [int(dep_id) for dep_id in re.findall(r'\d+', dependencies)]
+            else:
+                dependencies = []
+            task = cls(task_name, {}, difficulty=difficulty, dependencies=dependencies, id=task_id)
+            tasks.append(task)
+        return tasks
+
+    @classmethod
+    def get_class_def(cls):
+        return inspect.getsource(Task)
 
 
 # Breaking the absraction here, still a bit rusty from Python.
@@ -125,6 +157,9 @@ class NxTaskStorage():
         self.objective_node = objective
         self.tasks_dict[0] = Task(objective, {})
         self.graph.add_node(self.objective_node)
+
+    def get_tasks(self):
+        return self.tasks_dict.values()
 
     def from_tasks(self, tasks: List[Task], objective: str):
         self.graph = nx.DiGraph()
@@ -193,6 +228,9 @@ class NxTaskStorage():
     
 if __name__ == '__main__':
     print("hello")
+    print(find_class_contents("Task"))
+    print(Task.get_class_def())
+
     task_storage = QueueDAGTaskStorage(NxDAG)
     task_storage.append({"task_name": "task1", "task_params": {}})
     task_storage.append({"task_name": "task2", "task_params": {}})
