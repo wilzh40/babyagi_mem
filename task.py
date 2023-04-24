@@ -16,7 +16,7 @@ class Task:
  
     def __str__(self) -> str:
             dep_str = "[" + ', '.join(str(dep) for dep in self.dependencies) + "]" if len(self.dependencies) > 0 else "[]"
-            return f"{self.id}: {self.task_name} (difficulty: {self.difficulty}, dependencies: {dep_str})"
+            return f"{self.id}. {self.task_name} (difficulty: {self.difficulty}, dependencies: {dep_str})"
 
     def __repr__(self):
         return f"Task(id={self.id}, task_name={self.task_name}, task_params={self.task_params}, status={self.status}, result={self.result}, priority={self.priority}, difficulty={self.difficulty}, dependencies={self.dependencies}, creation_timestamp={self.creation_timestamp})"
@@ -55,6 +55,6 @@ class TestTask(unittest.TestCase):
         tasks = Task.from_model_resp(task_str)
         for i, task in enumerate(tasks):
             task_str = str(task)
-            expected_str = f"{i+1}: {task.task_name} (difficulty: {task.difficulty}, dependencies: {task.dependencies})"
+            expected_str = f"{i+1}. {task.task_name} (difficulty: {task.difficulty}, dependencies: {task.dependencies})"
             print(expected_str)
             self.assertEqual(task_str, expected_str) 

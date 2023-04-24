@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from task_storage import QueueTaskStorage, QueueDAGTaskStorage, NxTaskStorage, Task
 from graph import AdjacencyListDAG, NxDAG 
 import regex as re
+from task import Task
 
 
 # Load logger
@@ -356,22 +357,6 @@ def find_function_contents(function_name):
             contents = match.group(1).strip()
             return contents
     
-def parse_response(response: str):
-    tasks = []
-    pattern = r'(?P<id>\d+)\.\s+(?P<task_name>.*?)\s+\(difficulty:\s+(?P<difficulty>[\d\.]+),\s+dependencies:\s+(?P<dependencies>\[.*?\]|none)\)'
-    for match in re.finditer(pattern, response):
-        task_id = int(match.group('id'))
-        task_name = match.group('task_name')
-        difficulty = float(match.group('difficulty'))
-        dependencies = match.group('dependencies')
-        if dependencies != "none":
-            dependencies = [int(dep_id) for dep_id in re.findall(r'\d+', dependencies)]
-        else:
-            dependencies = []
-        task = Task(task_name, {}, difficulty=difficulty, dependencies=dependencies, id=task_id)
-        tasks.append(task)
-    return tasks
-
 def dag_modification_agent(
     objective: str, result: Dict, task_description: str, task_list: List[Task]):
     task_list_str = '\n'.join([str(task) for task in task_list])
@@ -379,11 +364,9 @@ def dag_modification_agent(
     You are a task creation AI that uses the result of an execution agent to create new tasks with the following objective: {objective},
     The last completed task has the result: {result}.
     This result was based on this task description: {task_description}. These are incomplete tasks: {task_list_str}.
-    Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks in the same format as our tasks.
-    ```
-    (task_name: str, difficulty: float from 0.0 to 1.0, dependencies: List[int])
-    ```
-    Class definition for parsing/unparsing: 
+    Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks in the same format as our tasks, 
+    as well as a list of dependencies between tasks in the following format for the purpose of ingestion into networkx Directed Acyclic Graph, where the id is the index of the above returned tasks
+    Make sure we can parse the tasks by using the following class definition:
     ```
     {Task.get_class_def()}
     ```
@@ -394,6 +377,7 @@ def dag_modification_agent(
     logger.debug(response)
     logger.debug( "Parsed response for modifications:")
     logger.debug(Task.from_model_resp(response))
+    return Task.from_model_resp(response)
 
 
 def dag_creation_agent(
@@ -421,7 +405,7 @@ def dag_creation_agent(
     logger.debug(response)
     logger.debug( "Parsed response for modifications:")
     logger.debug(Task.from_model_resp(response))
-    return parse_response(response)
+    return Task.from_model_resp(response)
 
 
 def task_creation_agent_dag(
@@ -532,7 +516,7 @@ def main ():
             for t in nx_task_storage.get_task_names():
                 print(" • "+t)
             # Save the visualization
-            nx_task_storage.save_viz("""./viz/{iter}.png""")
+            nx_task_storage.save_viz("./viz/{}.png".format(iter))
 
             # Step 1: Pull the first incomplete task
             task = nx_task_storage.popleft()
@@ -565,12 +549,18 @@ def main ():
             #     task["task_name"],
             #     tasks_storage.get_task_names(),
             # )
-            dag_test = dag_modification_agent(
+            new_tasks = dag_modification_agent(
                 OBJECTIVE,
                 enriched_result,
                 task.task_name,
                 nx_task_storage.get_tasks()
             )
+
+            # Update our dag
+            if new_tasks:
+                nx_task_storage.add_tasks(new_tasks)
+            else:
+                print("No new tasks created")
 
             # for new_task in new_tasks:
             #     new_task.update({"task_id": tasks_storage.next_task_id()})
