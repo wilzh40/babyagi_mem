@@ -500,9 +500,9 @@ if not JOIN_EXISTING_OBJECTIVE:
     }
     tasks_storage.append(initial_task)
 
-# nx_task_storage = NxTaskStorage(OBJECTIVE)
-# nx_task_storage.append(Task(INITIAL_TASK, []))
-def main ():
+
+# main iteration loop.
+def lets_go(objective: str, initial_task: str):
     initial_tasks = dag_creation_agent(OBJECTIVE, INITIAL_TASK)
     nx_task_storage = NxTaskStorage(OBJECTIVE)
     nx_task_storage.from_tasks(initial_tasks, objective=OBJECTIVE)
@@ -555,12 +555,14 @@ def main ():
                 task.task_name,
                 nx_task_storage.get_tasks()
             )
+            
 
             # Update our dag
             if new_tasks:
                 nx_task_storage.add_tasks(new_tasks)
             else:
                 print("No new tasks created")
+
 
             # for new_task in new_tasks:
             #     new_task.update({"task_id": tasks_storage.next_task_id()})
@@ -570,6 +572,30 @@ def main ():
 
         # Sleep a bit before checking the task list again
         time.sleep(3) 
+
+
+# nx_task_storage = NxTaskStorage(OBJECTIVE)
+# nx_task_storage.append(Task(INITIAL_TASK, []))
+import streamlit as st
+def main():
+    # Streamlit settings.
+    st.sidebar.title("FlowGPT")
+    objective = st.sidebar.text_area(
+        "Objective",
+        value=st.session_state.get("objective-input", OBJECTIVE),
+        key="objective-input",
+        height=200
+    )
+    initial_task = st.sidebar.text_area(
+        "Initial task",
+        value=st.session_state.get("init-input", INITIAL_TASK),
+        key="init-input",
+        height=200
+    )
+    submit = st.sidebar.button("Start")
+    valid_submission = submit and objective != "" and initial_task != ""
+
+    lets_go(objective=objective, initial_task=initial_task)
 
 if __name__ == "__main__":
     main()
