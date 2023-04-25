@@ -10,13 +10,23 @@
 - TO RUN UNIT TESTS: `ptw`, `python3 -m unittest task.py`
 
 # TODO
-
 - Get things running on docker.
+- Docker 
+- Streamlit on docker?
 - Clean up all the extraneous code.
-- Get a better memory-based system using LangChatGPT
 - Have a better execution system in a priviledged environment (research and execution)
 - Explore self-forking
 
+## DAG
+-- Reweight the dag based on memory
+### Memory
+-- Get a better memory-based system using LangChatGPT
+-- Short term is just a internal store in-memory (ThinkGPT)
+-- Long term is through file persistence  
+---- Lllama Index
+---- ThinkGPT to read files and summarize through chunked summary to get around the token limit through the API
+--- Meta module deciding when to save to short-term and when to long-term
+--- Cleanup/forgetting to nuke things from memory/or daydream/rearranage memory
 
 # Objective
 

@@ -143,6 +143,9 @@ class NxTaskStorage():
     def add_tasks(self, tasks: List[Task]):
         for task in tasks:
             self.tasks_dict[task.id] = task
+            if self.graph.has_node(task.id):
+                self.graph.remove_node(task.id)
+            # Sometimes we will overwrite the tasks returned
             self.graph.add_node(task.id)
             for dep in task.dependencies:
                 self.graph.add_edge(task.id, dep)

@@ -380,7 +380,8 @@ def dag_modification_agent(
     This result was based on this task description: {task_description}. These are incomplete tasks: {task_list_str}.
     Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks in the same format as our tasks, 
     as well as a list of dependencies between tasks in the following format for the purpose of ingestion into networkx Directed Acyclic Graph, where the id is the index of the above returned tasks
-    We want to have around at most {task_limit} tasks in the graph. The new graph should be a DAG: it must not contain any cycles.
+    We want to have around at most {task_limit} tasks in the graph. The new graph should be a DAG: it must not contain any cycles, I repeat the new tasks must not induce any cycles.
+    If we don't create any new tasks (since we succesfully completed our last task based on the result), return an empty array.
     Make sure we can parse the tasks by using the following class definition:
     ```
     {Task.get_class_def()}
@@ -482,7 +483,7 @@ def execution_agent(objective: str, task: str, context: str) -> str:
     # print(context)
     prompt = f"""
     You are an AI who performs one task based on the following objective: {objective}\n.
-    Take into account these previously completed tasks: {context}\n.
+    Take into account these previously completed tasks:\n{context}\n.
     Your task: {task}\nResponse:"""
     return openai_call(prompt, max_tokens=2000)
 
@@ -599,11 +600,13 @@ def lets_go(objective: str, initial_task: str):
             with tab4:
                 with Message(label=f"{iter} Next Task") as m:
                     # m.write("### Next Task")
-                    m.write("- " + str(task.id) + ": " + task.task_name)
+                    tab1, tab2 = m.exp.tabs(["Task", "Context"])
+                    tab1.write(str(task.id) + ": " + task.task_name)
+                    tab2.write(context)
                     # m.write("")
                 with Message(label=f"{iter} Task Result") as m:
                     # m.write("### Task Result")
-                    tab1, tab2 = m.tabs(["result", "enriched_result"])
+                    tab1, tab2 = m.exp.tabs(["result", "enriched_result"])
                     tab1.write(result)
                     tab2.write(enriched_result)
                     # m.write("")
