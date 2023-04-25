@@ -1,21 +1,31 @@
 #!/usr/bin/env python3
+from bs4 import BeautifulSoup
+from urllib.request import urlopen
+from typing import Any
+import subprocess
+from io import StringIO
+from pathlib import Path
+import platform
+import re
 import os
 import time
 import logging
 import sys
 from collections import deque
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import importlib
 import openai
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from dotenv import load_dotenv
-from task_storage import  NxTaskStorage, Task
-from graph import NxDAG 
+from task_storage import NxTaskStorage, Task
+from graph import NxDAG
 import regex as re
 from task import Task
 import streamlit as st
 from memory import SimpleMemory
+from duckduckgo_search import ddg
+
 
 # Load logger
 import logging
@@ -31,19 +41,20 @@ logger.setLevel(logging.DEBUG)
 log_output = st.sidebar.container()
 
 formatter = colorlog.ColoredFormatter(
-	"%(log_color)s%(levelname)-8s%(reset)s %(blue)s%(message)s",
-	datefmt=None,
-	reset=True,
-	log_colors={
-		'DEBUG':    'cyan',
-		'INFO':     'green',
-		'WARNING':  'yellow',
-		'ERROR':    'red',
-		'CRITICAL': 'red,bg_white',
-	},
-	secondary_log_colors={},
-	style='%'
+    "%(log_color)s%(levelname)-8s%(reset)s %(blue)s%(message)s",
+    datefmt=None,
+    reset=True,
+    log_colors={
+        'DEBUG':    'cyan',
+        'INFO':     'green',
+        'WARNING':  'yellow',
+        'ERROR':    'red',
+        'CRITICAL': 'red,bg_white',
+    },
+    secondary_log_colors={},
+    style='%'
 )
+
 
 class StreamlitHandler(logging.Handler):
     def __init__(self, level=logging.NOTSET):
@@ -52,6 +63,7 @@ class StreamlitHandler(logging.Handler):
     def emit(self, record):
         msg = self.format(record)
         log_output.code(msg)
+
 
 # create a stream handler with the colored formatter
 # handler = StreamlitHandler()
@@ -67,16 +79,22 @@ load_dotenv()
 # Engine configuration
 
 # Model: GPT, LLAMA, HUMAN, etc.
-LLM_MODEL = os.getenv("LLM_MODEL", os.getenv("OPENAI_API_MODEL", "gpt-3.5-turbo")).lower()
+LLM_MODEL = os.getenv("LLM_MODEL", os.getenv(
+    "OPENAI_API_MODEL", "gpt-3.5-turbo")).lower()
 
 # API Keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 if not (LLM_MODEL.startswith("llama") or LLM_MODEL.startswith("human")):
-    assert OPENAI_API_KEY, "\033[91m\033[1m" + "OPENAI_API_KEY environment variable is missing from .env" + "\033[0m\033[0m"
+    assert OPENAI_API_KEY, "\033[91m\033[1m" + \
+        "OPENAI_API_KEY environment variable is missing from .env" + \
+        "\033[0m\033[0m"
 
 # Table config
-RESULTS_STORE_NAME = os.getenv("RESULTS_STORE_NAME", os.getenv("TABLE_NAME", ""))
-assert RESULTS_STORE_NAME, "\033[91m\033[1m" + "RESULTS_STORE_NAME environment variable is missing from .env" + "\033[0m\033[0m"
+RESULTS_STORE_NAME = os.getenv(
+    "RESULTS_STORE_NAME", os.getenv("TABLE_NAME", ""))
+assert RESULTS_STORE_NAME, "\033[91m\033[1m" + \
+    "RESULTS_STORE_NAME environment variable is missing from .env" + \
+    "\033[0m\033[0m"
 
 # Run configuration
 INSTANCE_NAME = os.getenv("INSTANCE_NAME", os.getenv("BABY_NAME", "BabyAGI"))
@@ -92,12 +110,14 @@ OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", 0.0))
 
 # Extensions support begin
 
+
 def can_import(module_name):
     try:
         importlib.import_module(module_name)
         return True
     except ImportError:
         return False
+
 
 DOTENV_EXTENSIONS = os.getenv("DOTENV_EXTENSIONS", "").split(" ")
 
@@ -134,20 +154,25 @@ if DOTENV_EXTENSIONS:
 
 print("\033[95m\033[1m"+"\n*****CONFIGURATION*****\n"+"\033[0m\033[0m")
 print(f"Name  : {INSTANCE_NAME}")
-print(f"Mode  : {'alone' if COOPERATIVE_MODE in ['n', 'none'] else 'local' if COOPERATIVE_MODE in ['l', 'local'] else 'distributed' if COOPERATIVE_MODE in ['d', 'distributed'] else 'undefined'}")
+print(
+    f"Mode  : {'alone' if COOPERATIVE_MODE in ['n', 'none'] else 'local' if COOPERATIVE_MODE in ['l', 'local'] else 'distributed' if COOPERATIVE_MODE in ['d', 'distributed'] else 'undefined'}")
 print(f"LLM   : {LLM_MODEL}")
 
 # Check if we know what we are doing
-assert OBJECTIVE, "\033[91m\033[1m" + "OBJECTIVE environment variable is missing from .env" + "\033[0m\033[0m"
-assert INITIAL_TASK, "\033[91m\033[1m" + "INITIAL_TASK environment variable is missing from .env" + "\033[0m\033[0m"
+assert OBJECTIVE, "\033[91m\033[1m" + \
+    "OBJECTIVE environment variable is missing from .env" + "\033[0m\033[0m"
+assert INITIAL_TASK, "\033[91m\033[1m" + \
+    "INITIAL_TASK environment variable is missing from .env" + "\033[0m\033[0m"
 
-LLAMA_MODEL_PATH = os.getenv("LLAMA_MODEL_PATH", "models/llama-13B/ggml-model.bin")
+LLAMA_MODEL_PATH = os.getenv(
+    "LLAMA_MODEL_PATH", "models/llama-13B/ggml-model.bin")
 if LLM_MODEL.startswith("llama"):
     if can_import("llama_cpp"):
         from llama_cpp import Llama
 
         print(f"LLAMA : {LLAMA_MODEL_PATH}" + "\n")
-        assert os.path.exists(LLAMA_MODEL_PATH), "\033[91m\033[1m" + f"Model can't be found." + "\033[0m\033[0m"
+        assert os.path.exists(
+            LLAMA_MODEL_PATH), "\033[91m\033[1m" + f"Model can't be found." + "\033[0m\033[0m"
 
         CTX_MAX = 2048
         THREADS_NUM = 16
@@ -192,13 +217,19 @@ if LLM_MODEL.startswith("human"):
 print("\033[94m\033[1m" + "\n*****OBJECTIVE*****\n" + "\033[0m\033[0m")
 print(f"{OBJECTIVE}")
 
-if not JOIN_EXISTING_OBJECTIVE: print("\033[93m\033[1m" + "\nInitial task:" + "\033[0m\033[0m" + f" {INITIAL_TASK}")
-else: print("\033[93m\033[1m" + f"\nJoining to help the objective" + "\033[0m\033[0m")
+if not JOIN_EXISTING_OBJECTIVE:
+    print("\033[93m\033[1m" + "\nInitial task:" +
+          "\033[0m\033[0m" + f" {INITIAL_TASK}")
+else:
+    print("\033[93m\033[1m" +
+          f"\nJoining to help the objective" + "\033[0m\033[0m")
 
 # Configure OpenAI
 openai.api_key = OPENAI_API_KEY
 
 # Results storage using local ChromaDB
+
+
 class DefaultResultsStorage:
     def __init__(self):
         logging.getLogger('chromadb').setLevel(logging.ERROR)
@@ -226,7 +257,8 @@ class DefaultResultsStorage:
             return
         # Continue with the rest of the function
 
-        embeddings = [llm_embed.embed(item) for item in vector] if LLM_MODEL.startswith("llama") else None
+        embeddings = [llm_embed.embed(
+            item) for item in vector] if LLM_MODEL.startswith("llama") else None
         if (
             len(self.collection.get(ids=[result_id], include=[])["ids"]) > 0
         ):  # Check if the result already exists
@@ -255,6 +287,7 @@ class DefaultResultsStorage:
         )
         return [item["task"] for item in results["metadatas"][0]]
 
+
 # Initialize results storage
 results_storage = DefaultResultsStorage()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "")
@@ -265,8 +298,10 @@ if PINECONE_API_KEY:
             PINECONE_ENVIRONMENT
         ), "\033[91m\033[1m" + "PINECONE_ENVIRONMENT environment variable is missing from .env" + "\033[0m\033[0m"
         from extensions.pinecone_storage import PineconeResultsStorage
-        results_storage = PineconeResultsStorage(OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_ENVIRONMENT, LLM_MODEL, LLAMA_MODEL_PATH, RESULTS_STORE_NAME, OBJECTIVE)
-        print("\nReplacing results storage: " + "\033[93m\033[1m" +  "Pinecone" + "\033[0m\033[0m")
+        results_storage = PineconeResultsStorage(
+            OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_ENVIRONMENT, LLM_MODEL, LLAMA_MODEL_PATH, RESULTS_STORE_NAME, OBJECTIVE)
+        print("\nReplacing results storage: " +
+              "\033[93m\033[1m" + "Pinecone" + "\033[0m\033[0m")
 
 
 # Initialize tasks storage
@@ -282,7 +317,8 @@ def openai_call(
     while True:
         try:
             if model.lower().startswith("llama"):
-                result = llm(prompt[:CTX_MAX], stop=["### Human"], echo=True, temperature=0.2)
+                result = llm(prompt[:CTX_MAX], stop=[
+                             "### Human"], echo=True, temperature=0.2)
                 return result['choices'][0]['text'].strip()
             elif model.lower().startswith("human"):
                 return user_input_await(prompt)
@@ -344,24 +380,6 @@ def openai_call(
             break
 
 
-def task_creation_agent(
-    objective: str, result: Dict, task_description: str, task_list: List[str]
-):
-    prompt = f"""
-    You are a task creation AI that uses the result of an execution agent to create new tasks with the following objective: {objective},
-    The last completed task has the result: {result}.
-    This result was based on this task description: {task_description}. 
-    These are incomplete tasks: {', '.join(task_list)}.
-    Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks.
-    Return the tasks as an array."""
-    response = openai_call(prompt)
-    new_tasks = response.split("\n") if "\n" in response else [response]
-    return [{"task_name": task_name} for task_name in new_tasks]
-
-
-
-
-import re
 def find_function_contents(function_name):
     with open(__file__) as f:
         source_code = f.read()
@@ -370,9 +388,10 @@ def find_function_contents(function_name):
         if match:
             contents = match.group(1).strip()
             return contents
-    
+
+
 def dag_modification_agent(
-    objective: str, result: Dict, task_description: str, task_list: List[Task], task_limit=10):
+        objective: str, result: Dict, task_description: str, task_list: List[Task], task_limit=10):
     task_list_str = '\n'.join([str(task) for task in task_list])
     prompt = f"""
     You are a task creation AI that uses the result of an execution agent to create new tasks with the following objective: {objective},
@@ -389,9 +408,9 @@ def dag_modification_agent(
     """
     response = openai_call(prompt)
     logger.debug(prompt)
-    logger.debug("Response:") 
+    logger.debug("Response:")
     logger.debug(response)
-    logger.debug( "Parsed response for modifications:")
+    logger.debug("Parsed response for modifications:")
     logger.debug(Task.from_model_resp(response))
     return Task.from_model_resp(response)
 
@@ -417,56 +436,155 @@ def dag_creation_agent(
     """
     response = openai_call(prompt)
     logger.debug(prompt)
-    logger.debug("Response:") 
+    logger.debug("Response:")
     logger.debug(response)
-    logger.debug( "Parsed response for modifications:")
+    logger.debug("Parsed response for modifications:")
     logger.debug(Task.from_model_resp(response))
     return Task.from_model_resp(response)
 
 
-def task_creation_agent_dag(
-    objective: str, result: Dict, task_description: str, task_list: List[str], task_dependencies: Dict[str, List[str]], tasks):
-    prompt = f"""
-    You are a task creation AI that uses the result of an execution agent to create new tasks with the following objective: {objective},
-    The last completed task has the result: {result}.
-    This result was based on this task description: {task_description}. These are incomplete tasks: {', '.join(task_list)}.
-
-    These are the dependencies between tasks: {task_dependencies}.
-
-    These are the full metadata for our tasks: {tasks}.
-
-    Based on the result, create new tasks to be completed by the AI system that do not overlap with incomplete tasks in the same format as our tasks.
-    """
-    response = openai_call(prompt)
-    print(prompt)
-    print(response)
-    # new_tasks = response.split("\n") if "\n" in response else [response]
-    # return [{"task_name": task_name} for task_name in new_tasks]
-
-
-def prioritization_agent():
-    task_names = tasks_storage.get_task_names()
-    next_task_id = tasks_storage.next_task_id()
-    prompt = f"""
-    You are a task prioritization AI tasked with cleaning the formatting of and reprioritizing the following tasks: {task_names}.
-    Consider the ultimate objective of your team:{OBJECTIVE}.
-    Do not remove any tasks. Return the result as a numbered list, like:
-    #. First task
-    #. Second task
-    Start the task list with number {next_task_id}."""
-    response = openai_call(prompt)
-    new_tasks = response.split("\n") if "\n" in response else [response]
-    new_tasks_list = []
-    for task_string in new_tasks:
-        task_parts = task_string.strip().split(".", 1)
-        if len(task_parts) == 2:
-            task_id = task_parts[0].strip()
-            task_name = task_parts[1].strip()
-            new_tasks_list.append({"task_id": task_id, "task_name": task_name})
-    tasks_storage.replace(new_tasks_list)
+operating_system = platform.platform()
 
 
 # Execute a task based on the objective and five previous tasks
+
+# Inspired by MicroGPT.
+class Executor():
+    # TODO(wilson): Renable the other prompts
+    # Supported commands are: execute_python, execute_shell, read_file, web_search, web_scrape, talk_to_user, or done
+    PROMPT = f"You are an autonomous agent running on {operating_system}." + '''
+    OVERALL OBJECTIVE: {objective}
+    TASK TO EXECUTE: {task}
+    CONTEXT: {context}
+    Carefully consider your next command.
+    # Supported commands are:  web_search, web_scrape, talk_to_user, or done
+    The mandatory response format is:
+
+    <r>[YOUR_REASONING]</r><c>[COMMAND]</c>
+    [ARGUMENT]
+
+    ARGUMENT may have multiple lines if the argument is Python code.
+    Use only non-interactive shell commands.
+    Python code run with execute_python must end with an output "print" statement.
+    Send a separate "done" command *after* the objective was achieved.
+    RESPOND WITH PRECISELY ONE THOUGHT/COMMAND/ARG COMBINATION.
+    DO NOT CHAIN MULTIPLE COMMANDS.
+    DO NOT INCLUDE EXTRA TEXT BEFORE OR AFTER THE COMMAND.
+
+    Examples:
+
+    <r>Search for websites relevant to salami pizza.</r><c>web_search</c>
+    salami pizza
+
+    <r>Scrape information about Apples.</r><c>web_scrape</c>
+    https://en.wikipedia.org/wiki/Apple
+
+    <r>I need to ask the user for guidance.</r><c>talk_to_user</c>
+    What is URL of Domino's Pizza API?
+
+    <r>Write 'Hello, world!' to file</r><c>execute_python</c>
+    with open('hello_world.txt', 'w') as f:
+        f.write('Hello, world!')
+    '''
+
+    def __init__(self, objective: str, work_dir=None) -> None:
+        self.objective = objective
+        if work_dir is None or not work_dir:
+            work_dir = os.path.join(Path.home(), "dagi")
+            if not os.path.exists(work_dir):
+                os.makedirs(work_dir)
+        print(f"Working directory is {work_dir}")
+
+    # Returns mem which includes thought and command.
+
+    def parse_response(self, response_text: str) -> Tuple[str, str, str]:
+        res_lines = response_text.split("\n")
+        PATTERN = r'<(r|c)>(.*?)</(r|c)>'
+        matches = re.findall(PATTERN, res_lines[0])
+
+        thought = matches[0][1]
+        command = matches[1][1]
+
+        # Account for GPT-3.5 sometimes including an extra "done"
+        if "done" in res_lines[-1]:
+            res_line = res_lines[:-1]
+
+        arg = "\n".join(res_lines[1:])
+
+        # Remove unwanted code formatting backticks
+        arg = arg.replace("```", "")
+        return thought, command, arg
+
+    # TODO(wilson): use the same summary_hint as the other file.
+    def execute_command(self, command: str, arg: str, agent: any, mem: str, objective: str,
+                        max_memory_item_size: int = 2000, summary_hint: str = "Here's a summary:\n",
+                        extra_summary_hint: str = "Objective: {objective}\nSummarizer hint: {summarizer_hint}") -> None:
+
+        if command == "execute_python":
+            _stdout = StringIO()
+            with redirect_stdout(_stdout):
+                exec(arg)
+            result = _stdout.getvalue()
+        elif command == "execute_shell":
+            result = subprocess.run(
+                arg, capture_output=True, shell=True, check=False)
+            result = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        elif command == "web_search":
+            result = ddg(arg, max_results=5)
+        elif command == "web_scrape":
+            with urlopen(arg) as response:
+                html = response.read()
+
+            response_text = agent.chunked_summarize(
+                content=BeautifulSoup(
+                    html,
+                    features="lxml"
+                ).get_text(),
+                max_tokens=max_memory_item_size,
+                instruction_hint=summary_hint +
+                extra_summary_hint.format(summarizer_hint=objective)
+            )
+
+            result = response_text
+        elif command == "read_file":
+            with open(arg, "r") as f:
+                file_content = agent.chunked_summarize(
+                    f.read(), max_memory_item_size,
+                    instruction_hint=summary_hint +
+                    extra_summary_hint.format(objective=objective))
+            result = file_content
+        elif command == "done":
+            result = "Task completed."
+        else:
+            raise ValueError(
+                "Command must be one of 'execute_python', 'execute_shell', 'web_search', 'web_scrape', 'read_file', or 'done'.")
+        return result
+
+    def execute(self, objective, task, context):
+        for _ in range(5):
+            try:
+                response = openai_call(prompt=self.PROMPT.format(
+                    objective=objective, task=task, context=context), max_tokens=2000)
+                thought, command, arg = self.parse_response(response)
+                mem = f"Your thought: {thought}\nYour command: {command}"\
+                    f"\nCmd argument:\n{arg}\nResult:\n"
+            except Exception as e:
+                logger.error("Error parsing response:" + e)
+                continue
+            try:  # Execute command
+                result = self.execute_command(
+                    command, arg, self, context, objective)
+                return {f"{mem}{result}"}
+            except Exception as e:
+                if "context length" in str(e):
+                    print(
+                        f"{str(e)}\nTry decreasing MAX_CONTEXT_SIZE, MAX_MEMORY_ITEM_SIZE"
+                        " and SUMMARIZER_CHUNK_SIZE."
+                    )
+                return (f"{mem}The command returned an error:\n{str(e)}\n"
+                        "You should fix the command or code.")
+
+
 def execution_agent(objective: str, task: str, context: str) -> str:
     """
     Executes a task based on the given objective and previous context.
@@ -483,7 +601,7 @@ def execution_agent(objective: str, task: str, context: str) -> str:
     # print(context)
     prompt = f"""
     You are an AI who performs one task based on the following objective: {objective}\n.
-    Take into account these previously completed tasks:\n{context}\n.
+    Take into account these previously completed tasks: \n{context}\n.
     Your task: {task}\nResponse:"""
     return openai_call(prompt, max_tokens=2000)
 
@@ -501,18 +619,11 @@ def context_agent(query: str, top_results_num: int):
         list: A list of tasks as context for the given query, sorted by relevance.
 
     """
-    results = results_storage.query(query=query, top_results_num=top_results_num)
+    results = results_storage.query(
+        query=query, top_results_num=top_results_num)
     # print("***** RESULTS *****")
     # print(results)
     return results
-
-# # Add the initial task if starting new objective
-# if not JOIN_EXISTING_OBJECTIVE:
-#     initial_task = {
-#         "task_id": tasks_storage.next_task_id(),
-#         "task_name": INITIAL_TASK
-#     }
-#     tasks_storage.append(initial_task)
 
 
 # Add custom CSS to adjust padding and margins
@@ -533,25 +644,30 @@ def context_agent(query: str, top_results_num: int):
 #     </style>
 # """, unsafe_allow_html=True)
 # col1, col2 = st.columns([2, 1])
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Tasks/Results", "Graph", "List", "Log", "Memory"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["Tasks/Results", "Graph", "List", "Log", "Memory"])
 graph_placeholder = tab2.empty()
 current_task_placeholder = tab1.empty()
 current_result_placeholder = tab1.empty()
 current_list_placeholder = tab3.empty()
 
 # main iteration loop.
+
+
 def lets_go(objective: str, initial_task: str):
     initial_tasks = dag_creation_agent(object, initial_task)
     nx_task_storage = NxTaskStorage(OBJECTIVE)
     nx_task_storage.from_tasks(initial_tasks, objective=OBJECTIVE)
     iter = 0
     memory = SimpleMemory()
+    executor = Executor(OBJECTIVE)
     while st.session_state.loop_running:
         # As long as there are tasks in the storage...
         if not nx_task_storage.is_empty():
             iter += 1
             # Print the task list
-            print("\033[95m\033[1m" + "\n*****TASK LIST*****\n" + "\033[0m\033[0m")
+            print("\033[95m\033[1m" +
+                  "\n*****TASK LIST*****\n" + "\033[0m\033[0m")
             for t in nx_task_storage.get_task_names():
                 print(" • "+t)
             # Save the visualization
@@ -561,32 +677,38 @@ def lets_go(objective: str, initial_task: str):
 
             # Step 1: Pull the first incomplete task
             task = nx_task_storage.popleft()
-            print("\033[92m\033[1m" + "\n*****NEXT TASK*****\n" + "\033[0m\033[0m")
+            print("\033[92m\033[1m" +
+                  "\n*****NEXT TASK*****\n" + "\033[0m\033[0m")
             print(task.task_name)
 
             # Send to execution function to complete the task based on the context
             # TODO: Have a more advanced execution agent + save results.
             # TODO: Handle multiple results on the depdenceny tree.
             context = memory.remember(str(task))
-            print("\033[93m\033[1m" + "\n*****CONTEXT*****\n" + "\033[0m\033[0m")
+            print("\033[93m\033[1m" +
+                  "\n*****CONTEXT*****\n" + "\033[0m\033[0m")
             print(context)
-            result = execution_agent(objective, task.task_name, memory.remember(str(task)))
+            # result = execution_agent(
+            #     objective, task.task_name, memory.remember(str(task)))
+            result = executor.execute(
+                objective=OBJECTIVE, task=task.task_name, context=context)
 
-            print("\033[93m\033[1m" + "\n*****TASK RESULT*****\n" + "\033[0m\033[0m")
+            print("\033[93m\033[1m" +
+                  "\n*****TASK RESULT*****\n" + "\033[0m\033[0m")
             print(result)
 
             # Step 2: Enrich result and store in the results storage
             # This is where you should enrich the result if needed
             # enriched_result = {
             #     "data": result
-            # }  
+            # }
             # extract the actual result from the dictionary
             # since we don't do enrichment currently
-            # vector = enriched_result["data"]  
+            # vector = enriched_result["data"]
             # result_id = f"result_{task.id}"
             # results_storage.add(task, result, result_id, vector)
             enriched_result = memory.enrich_result(result)
-            memory.memorize_task(task, enriched_result)
+            memory.memorize_task(task, result)
 
             # Visualize this round of tasks before modification.
             with current_task_placeholder.container():
@@ -596,20 +718,22 @@ def lets_go(objective: str, initial_task: str):
                 st.markdown(result, unsafe_allow_html=True)
             with current_list_placeholder.container():
                 st.subheader("List of Tasks")
-                st.markdown("\n\n".join(nx_task_storage.get_task_names()), unsafe_allow_html=True)
+                st.markdown("\n\n".join(
+                    nx_task_storage.get_task_names()), unsafe_allow_html=True)
             with tab4:
-                with Message(label=f"{iter} Next Task") as m:
-                    # m.write("### Next Task")
-                    tab1, tab2 = m.exp.tabs(["Task", "Context"])
-                    tab1.write(str(task.id) + ": " + task.task_name)
-                    tab2.write(context)
+                with Message(label=f"{iter}: {task.task_name}") as m:
+                    result_tab, enriched_result_tab, context_tab = m.exp.tabs(
+                        ["Result", "Enriched Result", "Context"])
+                    result_tab.write(result)
+                    enriched_result_tab.write(enriched_result)
+                    context_tab.write(context)
                     # m.write("")
-                with Message(label=f"{iter} Task Result") as m:
-                    # m.write("### Task Result")
-                    tab1, tab2 = m.exp.tabs(["result", "enriched_result"])
-                    tab1.write(result)
-                    tab2.write(enriched_result)
-                    # m.write("")
+                # with Message(label=f"{iter} Task Result") as m:
+                #     # m.write("### Task Result")
+                #     tab1, tab2 = m.exp.tabs(["result", "enriched_result"])
+                #     tab1.write(result)
+                #     tab2.write(enriched_result)
+                #     # m.write("")
                 with Message(label=f"{iter} Task List") as m:
                     # m.write("### Next Task")
                     # m.write("")
@@ -617,7 +741,6 @@ def lets_go(objective: str, initial_task: str):
                     # m.write("")
             # with tab5.empty():
             #     memory.render_viz()
-
 
             with graph_placeholder.container():
                 st.subheader("DAG")
@@ -637,14 +760,12 @@ def lets_go(objective: str, initial_task: str):
                 task.task_name,
                 nx_task_storage.get_tasks()
             )
-            
 
             # Update our dag
             if new_tasks:
                 nx_task_storage.add_tasks(new_tasks)
             else:
                 print("No new tasks created")
-
 
             # for new_task in new_tasks:
             #     new_task.update({"task_id": tasks_storage.next_task_id()})
@@ -653,7 +774,7 @@ def lets_go(objective: str, initial_task: str):
             # if not JOIN_EXISTING_OBJECTIVE: prioritization_agent()
 
         # Sleep a bit before checking the task list again
-        time.sleep(3) 
+        time.sleep(3)
 
 
 # nx_task_storage = NxTaskStorage(OBJECTIVE)
@@ -671,7 +792,8 @@ if 'loop_running' not in st.session_state:
 #             }
 #     </style>
 #     """, unsafe_allow_html=True)
- 
+
+
 class Message:
     exp: st.expander
 
@@ -689,7 +811,6 @@ class Message:
 
     def write(self, content):
         self.exp.markdown(content)
-
 
 
 def main():
