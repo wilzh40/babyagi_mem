@@ -145,7 +145,7 @@ class NxTaskStorage():
             self.tasks_dict[task.id] = task
             self.graph.add_node(task.id)
             for dep in task.dependencies:
-                self.graph.add_edge(dep, task.id)
+                self.graph.add_edge(task.id, dep)
             self.graph.add_edge(task.id, self.objective_node)
         
     def is_empty(self):

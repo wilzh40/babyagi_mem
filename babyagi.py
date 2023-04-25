@@ -603,7 +603,9 @@ def lets_go(objective: str, initial_task: str):
                     # m.write("")
                 with Message(label=f"{iter} Task Result") as m:
                     # m.write("### Task Result")
-                    m.write(result)
+                    tab1, tab2 = m.tabs(["result", "enriched_result"])
+                    tab1.write(result)
+                    tab2.write(enriched_result)
                     # m.write("")
                 with Message(label=f"{iter} Task List") as m:
                     # m.write("### Next Task")
