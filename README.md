@@ -13,9 +13,15 @@
 - Get things running on docker.
 - Docker 
 - Streamlit on docker?
-- Clean up all the extraneous code.
 - Have a better execution system in a priviledged environment (research and execution)
+- Clean up all the extraneous code.
 - Explore self-forking
+- If no new tasks are created, delete the task.
+
+## Flow perspective
+- Step iteraiton
+- Allow the user to change the task inside the graph (reprioritzation or change the description or delete).
+- Possible in the UI 
 
 ## DAG
 -- Reweight the dag based on memory

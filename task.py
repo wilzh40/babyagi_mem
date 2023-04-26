@@ -2,7 +2,7 @@ import inspect
 import re
 import unittest
 from datetime import datetime
-# Main takeaways: I create the class with the help of ChatGpt barely remembering any Pythonic sytaxt.
+# Main takeaways: I create the class with the help of ChatGpt barely remembering any Pythonic sytact.
 
 
 class Task:
@@ -50,8 +50,7 @@ class Task:
 
     def describe(self):
         return """Difficulty should represent the approximate feasability or human effort required to complete the task. 
-        It should be a float between 0 and 1. 0 means the task is trivial and can be done in a few seconds.
-        1 means the task is very difficult and will take a lot of time and effort to complete with a lot of unknown unknowns, and might take more derisking."""
+        It should be a float between 0 and 1. 0 means the task is straightforward and derisked. 1 means the task is very difficult and will take a lot of time and effort to complete with a lot of unknown unknowns, and might take more derisking."""
 
 
 class TestTask(unittest.TestCase):
